@@ -1,239 +1,302 @@
-'use client';
+'use client'
 
-import { useEffect, useState, useRef } from 'react';
-import { fetchFromApi, getStreamUrl } from '@/lib/api';
-import { VideoPlayer } from './video-player';
-import { Tv, CalendarClock } from 'lucide-react';
-import Image from 'next/image';
+import { CalendarClock, CheckIcon, ChevronsUpDownIcon, Tv } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+
+import { fetchFromApi, getStreamUrl } from '@/lib/api'
+import { cn } from '@/lib/utils'
+
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from './ui/alert';
-import { AlertTriangle } from 'lucide-react';
-import { Button } from './ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Programme } from '@/types';
+} from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
+import { VideoPlayer } from '@/components/video-player'
+
+import { Programme } from '@/types'
 
 interface Channel {
-  num: number;
-  name: string;
-  stream_type: string;
-  stream_id: number;
-  stream_icon: string;
-  epg_channel_id: string;
-  added: string;
-  category_id: string;
-  custom_sid: string;
-  tv_archive: number;
-  direct_source: string;
-  tv_archive_duration: number;
+  num: number
+  name: string
+  stream_type: string
+  stream_id: number
+  stream_icon: string
+  epg_channel_id: string
+  added: string
+  category_id: string
+  custom_sid: string
+  tv_archive: number
+  direct_source: string
+  tv_archive_duration: number
 }
 
 interface Category {
-  category_id: string;
-  category_name: string;
-  parent_id: number;
+  category_id: string
+  category_name: string
+  parent_id: number
 }
 
 export function LiveChannels() {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [loading, setLoading] = useState(true);
-  const [streamUrl, setStreamUrl] = useState<string>('');
-  const [isChrome, setIsChrome] = useState(false);
-  const [showEpg, setShowEpg] = useState(false);
-  const [epgData, setEpgData] = useState<Programme[]>([]);
-  const [loadingEpg, setLoadingEpg] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([])
+  const [channels, setChannels] = useState<Channel[]>([])
+  const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null)
+  const [selectedCategory, setSelectedCategory] = useState<string>('')
+  const [categorySelectOpen, setCategorySelectOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState<string>('')
+  const [loading, setLoading] = useState(true)
+  const [streamUrl, setStreamUrl] = useState<string>('')
+  const [isChrome, setIsChrome] = useState(false)
+  const [showEpg, setShowEpg] = useState(false)
+  const [epgData, setEpgData] = useState<Programme[]>([])
+  const [loadingEpg, setLoadingEpg] = useState(false)
   const [selectedTimezone, setSelectedTimezone] = useState(() => {
     // Try to get saved timezone from localStorage, default to 1 if not found
     if (typeof window !== 'undefined') {
-      const savedTimezone = localStorage.getItem('selectedTimezone');
-      return savedTimezone ? parseInt(savedTimezone) : 1;
+      const savedTimezone = localStorage.getItem('selectedTimezone')
+      return savedTimezone ? parseInt(savedTimezone) : 1
     }
-    return 1;
-  });
-  const [selectedTimezoneValue, setSelectedTimezoneValue] = useState(selectedTimezone.toString());
-  const liveEventRef = useRef<HTMLDivElement>(null);
+    return 1
+  })
+  const [selectedTimezoneValue, setSelectedTimezoneValue] = useState(
+    selectedTimezone.toString()
+  )
+  const liveEventRef = useRef<HTMLDivElement>(null)
 
   const timezones = [
-    { offset: -12, name: "Baker Island (GMT-12)" },
-    { offset: -11, name: "American Samoa (GMT-11)" },
-    { offset: -10, name: "Hawaii (GMT-10)" },
-    { offset: -9, name: "Alaska (GMT-9)" },
-    { offset: -8, name: "Pacific Time (GMT-8)" },
-    { offset: -7, name: "Mountain Time (GMT-7)" },
-    { offset: -6, name: "Central Time (GMT-6)" },
-    { offset: -5, name: "Eastern Time (GMT-5)" },
-    { offset: -4, name: "Atlantic Time (GMT-4)" },
-    { offset: -3, name: "Buenos Aires (GMT-3)" },
-    { offset: -2, name: "South Georgia (GMT-2)" },
-    { offset: -1, name: "Cape Verde (GMT-1)" },
-    { offset: 0, name: "London (GMT+0)" },
-    { offset: 1, name: "Paris, Berlin (GMT+1)" },
-    { offset: 2, name: "Cairo, Athens (GMT+2)" },
-    { offset: 3, name: "Moscow (GMT+3)" },
-    { offset: 4, name: "Dubai (GMT+4)" },
-    { offset: 5, name: "Karachi (GMT+5)" },
-    { offset: 6, name: "Dhaka (GMT+6)" },
-    { offset: 7, name: "Bangkok (GMT+7)" },
-    { offset: 8, name: "Singapore, Beijing (GMT+8)" },
-    { offset: 9, name: "Tokyo (GMT+9)" },
-    { offset: 10, name: "Sydney (GMT+10)" },
-    { offset: 11, name: "Solomon Islands (GMT+11)" },
-    { offset: 12, name: "Auckland (GMT+12)" }
-  ];
+    { offset: -12, name: 'Baker Island (GMT-12)' },
+    { offset: -11, name: 'American Samoa (GMT-11)' },
+    { offset: -10, name: 'Hawaii (GMT-10)' },
+    { offset: -9, name: 'Alaska (GMT-9)' },
+    { offset: -8, name: 'Pacific Time (GMT-8)' },
+    { offset: -7, name: 'Mountain Time (GMT-7)' },
+    { offset: -6, name: 'Central Time (GMT-6)' },
+    { offset: -5, name: 'Eastern Time (GMT-5)' },
+    { offset: -4, name: 'Atlantic Time (GMT-4)' },
+    { offset: -3, name: 'Buenos Aires (GMT-3)' },
+    { offset: -2, name: 'South Georgia (GMT-2)' },
+    { offset: -1, name: 'Cape Verde (GMT-1)' },
+    { offset: 0, name: 'London (GMT+0)' },
+    { offset: 1, name: 'Paris, Berlin (GMT+1)' },
+    { offset: 2, name: 'Cairo, Athens (GMT+2)' },
+    { offset: 3, name: 'Moscow (GMT+3)' },
+    { offset: 4, name: 'Dubai (GMT+4)' },
+    { offset: 5, name: 'Karachi (GMT+5)' },
+    { offset: 6, name: 'Dhaka (GMT+6)' },
+    { offset: 7, name: 'Bangkok (GMT+7)' },
+    { offset: 8, name: 'Singapore, Beijing (GMT+8)' },
+    { offset: 9, name: 'Tokyo (GMT+9)' },
+    { offset: 10, name: 'Sydney (GMT+10)' },
+    { offset: 11, name: 'Solomon Islands (GMT+11)' },
+    { offset: 12, name: 'Auckland (GMT+12)' },
+  ]
 
-  const adjustTimeToTimezone = (date: Date, fromOffset: number, toOffset: number) => {
-    const diffHours = toOffset - fromOffset;
-    return new Date(date.getTime() + diffHours * 60 * 60 * 1000);
-  };
+  const adjustTimeToTimezone = (
+    date: Date,
+    fromOffset: number,
+    toOffset: number
+  ) => {
+    const diffHours = toOffset - fromOffset
+    return new Date(date.getTime() + diffHours * 60 * 60 * 1000)
+  }
 
   function formatDate(date: Date): string {
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const year = date.getFullYear();
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    
-    return `${day}-${month}-${year} ${hours}:${minutes}`;
+    const day = date.getDate().toString().padStart(2, '0')
+    const month = (date.getMonth() + 1).toString().padStart(2, '0')
+    const year = date.getFullYear()
+    const hours = date.getHours().toString().padStart(2, '0')
+    const minutes = date.getMinutes().toString().padStart(2, '0')
+
+    return `${day}-${month}-${year} ${hours}:${minutes}`
   }
 
   useEffect(() => {
     // Check if browser is Chrome
-    const userAgent = window.navigator.userAgent;
-    setIsChrome(userAgent.indexOf("Chrome") > -1);
-  }, []);
+    const userAgent = window.navigator.userAgent
+    setIsChrome(userAgent.indexOf('Chrome') > -1)
+  }, [])
 
   // Fetch categories first
   useEffect(() => {
     async function fetchCategories() {
       try {
-        const categoriesData = await fetchFromApi('get_live_categories');
-        setCategories(categoriesData);
+        const categoriesData = await fetchFromApi('get_live_categories')
+        setCategories(categoriesData)
         if (categoriesData.length > 0) {
-          setSelectedCategory(categoriesData[0].category_id);
+          setSelectedCategory(categoriesData[0].category_id)
         }
       } catch (error) {
-        console.error('Failed to fetch categories:', error);
+        console.error('Failed to fetch categories:', error)
       }
     }
-    fetchCategories();
-  }, []);
+    fetchCategories()
+  }, [])
 
   // Fetch channels when category changes
   useEffect(() => {
     async function fetchChannels() {
-      if (!selectedCategory) return;
-      
-      setLoading(true);
+      if (!selectedCategory) return
+
+      setLoading(true)
       try {
         const channelsData = await fetchFromApi('get_live_streams', {
-          category_id: selectedCategory
-        });
-        setChannels(channelsData);
+          category_id: selectedCategory,
+        })
+        setChannels(channelsData)
       } catch (error) {
-        console.error('Failed to fetch channels:', error);
+        console.error('Failed to fetch channels:', error)
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     }
-    fetchChannels();
-  }, [selectedCategory]);
+    fetchChannels()
+  }, [selectedCategory])
 
   useEffect(() => {
     async function fetchStreamUrl() {
       if (selectedChannel) {
         try {
-          const url = await getStreamUrl( selectedChannel.stream_id,'live');
-          setStreamUrl(url);
+          const url = await getStreamUrl(selectedChannel.stream_id, 'live')
+          setStreamUrl(url)
         } catch (error) {
-          console.error('Failed to fetch stream URL:', error);
+          console.error('Failed to fetch stream URL:', error)
         }
       }
     }
-    fetchStreamUrl();
-  }, [selectedChannel]);
+    fetchStreamUrl()
+  }, [selectedChannel])
 
   // Fetch EPG data when channel changes
   useEffect(() => {
     async function fetchEpgData() {
-      if (!selectedChannel?.epg_channel_id) return;
-      
-      setLoadingEpg(true);
+      if (!selectedChannel?.epg_channel_id) return
+
+      setLoadingEpg(true)
       try {
-        const response = await fetch('/api/epg?stream_id=' + selectedChannel.stream_id);
-        if (!response.ok) throw new Error('Failed to fetch EPG data');
-        const data = await response.json();
-        setEpgData(data.epg_listings || []);
+        const response = await fetch(
+          '/api/epg?stream_id=' + selectedChannel.stream_id
+        )
+        if (!response.ok) throw new Error('Failed to fetch EPG data')
+        const data = await response.json()
+        setEpgData(data.epg_listings || [])
       } catch (error) {
-        console.error('Failed to fetch EPG data:', error);
+        console.error('Failed to fetch EPG data:', error)
       } finally {
-        setLoadingEpg(false);
+        setLoadingEpg(false)
       }
     }
-    fetchEpgData();
-  }, [selectedChannel?.epg_channel_id]);
+    fetchEpgData()
+  }, [selectedChannel?.epg_channel_id])
 
   useEffect(() => {
     if (showEpg && !loadingEpg && epgData.length > 0 && liveEventRef.current) {
       // Add a small delay to ensure content is rendered
       setTimeout(() => {
-        liveEventRef.current?.scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'center' 
-        });
-      }, 100);
+        liveEventRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        })
+      }, 100)
     }
-  }, [showEpg, loadingEpg, epgData]);
+  }, [showEpg, loadingEpg, epgData])
 
   const searchedChannels = searchQuery
-    ? channels.filter(channel =>
+    ? channels.filter((channel) =>
         channel.name.toLowerCase().includes(searchQuery.toLowerCase())
       )
-    : channels;
+    : channels
 
   const handleTimezoneChange = (value: string) => {
-    const timezone = parseInt(value);
-    setSelectedTimezone(timezone);
-    localStorage.setItem('selectedTimezone', timezone.toString());
-  };
+    const timezone = parseInt(value)
+    setSelectedTimezone(timezone)
+    localStorage.setItem('selectedTimezone', timezone.toString())
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[350px,1fr] md:grid-cols-[300px,1fr] gap-4 md:gap-6 p-4">
-      
       <div className="flex flex-col space-y-4">
         <div className="rounded-lg border bg-card text-card-foreground shadow-sm">
           <div className="p-4 space-y-4">
-            <Select
-              value={selectedCategory}
-              onValueChange={setSelectedCategory}
+            <Popover
+              open={categorySelectOpen}
+              onOpenChange={setCategorySelectOpen}
             >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select category" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((category) => (
-                  <SelectItem key={category.category_id} value={category.category_id}>
-                    {category.category_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  className={cn(
+                    'justify-between relative w-full',
+                    !selectedCategory && 'text-muted-foreground'
+                  )}
+                >
+                  {selectedCategory
+                    ? categories.find(
+                        (category) => category.category_id === selectedCategory
+                      )?.category_name
+                    : 'Select Category'}
+                  <ChevronsUpDownIcon className="opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-2 w-full">
+                <Command>
+                  <CommandInput
+                    placeholder="Search Category..."
+                    className="h-9"
+                  />
+                  <CommandList>
+                    <CommandEmpty>No categories found.</CommandEmpty>
+                    <CommandGroup>
+                      {categories.map((category) => (
+                        <CommandItem
+                          value={category.category_name}
+                          key={category.category_id}
+                          onSelect={() => {
+                            setSelectedCategory(category.category_id)
+                            setCategorySelectOpen(false)
+                          }}
+                        >
+                          {category.category_name}
+                          <CheckIcon
+                            className={cn(
+                              'ml-auto',
+                              selectedCategory === category.category_id
+                                ? 'opacity-100'
+                                : 'opacity-0'
+                            )}
+                          />
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
             <input
               type="text"
               placeholder="Search channels..."
@@ -261,11 +324,15 @@ export function LiveChannels() {
                     key={channel.stream_id}
                     onClick={() => setSelectedChannel(channel)}
                     className={`flex items-center space-x-3 w-full p-2 rounded-md hover:bg-accent transition-colors ${
-                      selectedChannel?.stream_id === channel.stream_id ? 'bg-accent' : ''
+                      selectedChannel?.stream_id === channel.stream_id
+                        ? 'bg-accent'
+                        : ''
                     }`}
                   >
                     <Tv className="w-8 h-8 flex-shrink-0" />
-                    <span className="text-sm text-left line-clamp-2">{channel.name}</span>
+                    <span className="text-sm text-left line-clamp-2">
+                      {channel.name}
+                    </span>
                   </button>
                 ))
               )}
@@ -275,24 +342,27 @@ export function LiveChannels() {
       </div>
 
       <div className="space-y-4">
-      {isChrome && (
-        <Alert variant="destructive" className="bg-yellow-50 dark:bg-yellow-900/20">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            Some channels may not work properly in Chrome. For the best experience, consider using Firefox or another browser.
-          </AlertDescription>
-        </Alert>
-      )}
+        {isChrome && (
+          <Alert
+            variant="destructive"
+            className="bg-yellow-50 dark:bg-yellow-900/20"
+          >
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              Some channels may not work properly in Chrome. For the best
+              experience, consider using Firefox or another browser.
+            </AlertDescription>
+          </Alert>
+        )}
         {selectedChannel ? (
           <>
             <div className="rounded-lg overflow-hidden">
-              <VideoPlayer 
-                src={streamUrl}
-                autoPlay={true}
-              />
+              <VideoPlayer src={streamUrl} autoPlay={true} />
             </div>
             <div className="flex justify-between items-center">
-              <h2 className="text-xl md:text-2xl font-bold">{selectedChannel.name}</h2>
+              <h2 className="text-xl md:text-2xl font-bold">
+                {selectedChannel.name}
+              </h2>
               {selectedChannel.epg_channel_id && (
                 <Button
                   variant="outline"
@@ -307,7 +377,9 @@ export function LiveChannels() {
           </>
         ) : (
           <div className="aspect-video bg-accent rounded-lg flex items-center justify-center">
-            <p className="text-lg text-center px-4">Select a channel to start watching</p>
+            <p className="text-lg text-center px-4">
+              Select a channel to start watching
+            </p>
           </div>
         )}
       </div>
@@ -344,19 +416,29 @@ export function LiveChannels() {
                 ))}
               </div>
             ) : epgData.length === 0 ? (
-              <p className="text-center text-muted-foreground">No EPG data available</p>
+              <p className="text-center text-muted-foreground">
+                No EPG data available
+              </p>
             ) : (
               <ScrollArea className="h-[60vh]">
                 <div className="space-y-3">
                   {epgData.map((programme, index) => {
-                    const baseStart = new Date(programme.start);
-                    const baseEnd = new Date(programme.end);
-                    
+                    const baseStart = new Date(programme.start)
+                    const baseEnd = new Date(programme.end)
+
                     // Adjust times from GMT+1 to selected timezone
-                    const start = adjustTimeToTimezone(baseStart, 0, selectedTimezone);
-                    const end = adjustTimeToTimezone(baseEnd, 0, selectedTimezone);
-                    const isLive = new Date() >= start && new Date() <= end;
-                    
+                    const start = adjustTimeToTimezone(
+                      baseStart,
+                      0,
+                      selectedTimezone
+                    )
+                    const end = adjustTimeToTimezone(
+                      baseEnd,
+                      0,
+                      selectedTimezone
+                    )
+                    const isLive = new Date() >= start && new Date() <= end
+
                     return (
                       <div
                         key={index}
@@ -369,7 +451,9 @@ export function LiveChannels() {
                           <span>{formatDate(start)}</span>
                           <span>{formatDate(end)}</span>
                         </div>
-                        <h3 className="font-medium mt-1">{atob(programme.title) || programme.title}</h3>
+                        <h3 className="font-medium mt-1">
+                          {atob(programme.title) || programme.title}
+                        </h3>
                         {programme.desc && (
                           <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
                             {atob(programme.desc) || programme.desc}
@@ -383,7 +467,7 @@ export function LiveChannels() {
                           </div>
                         )}
                       </div>
-                    );
+                    )
                   })}
                 </div>
               </ScrollArea>
@@ -392,5 +476,5 @@ export function LiveChannels() {
         </DialogContent>
       </Dialog>
     </div>
-  );
+  )
 }
